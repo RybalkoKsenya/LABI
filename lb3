@@ -1,0 +1,111 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import cv2
+import random
+import pickle
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Activation, Flatten, Conv2D, MaxPooling2D
+
+DATADIR = '/kaggle/input/microsoft-catsvsdogs-dataset/PetImages'
+CATEGORIES = ["Dog", "Cat"]
+IMG_SIZE = 70
+MODEL_PATH = "cat_vs_dog_model.h5"
+
+def create_training_data():
+    training_data = []
+    for category in CATEGORIES:
+        path = os.path.join(DATADIR, category)
+        class_num = CATEGORIES.index(category)
+        for img in os.listdir(path):
+            try:
+                img_array = cv2.imread(os.path.join(path, img), cv2.IMREAD_GRAYSCALE)
+                new_array = cv2.resize(img_array, (IMG_SIZE, IMG_SIZE))
+                training_data.append([new_array, class_num])
+            except Exception as e:
+                pass
+    return training_data
+
+# Load or create training data
+if os.path.exists("X.pickle") and os.path.exists("y.pickle"):
+    with open("X.pickle", "rb") as pickle_in:
+        X = pickle.load(pickle_in)
+    with open("y.pickle", "rb") as pickle_in:
+        y = pickle.load(pickle_in)
+else:
+    training_data = create_training_data()
+    print(f"Number of training samples: {len(training_data)}")
+
+    random.shuffle(training_data)
+
+    X = []
+    y = []
+
+    for features, label in training_data:
+        X.append(features)
+        y.append(label)
+
+    X = np.array(X).reshape(-1, IMG_SIZE, IMG_SIZE, 1)
+    y = np.array(y)
+
+    X = X / 255.0
+
+    # Save the data for later use
+    with open("X.pickle", "wb") as pickle_out:
+        pickle.dump(X, pickle_out)
+
+    with open("y.pickle", "wb") as pickle_out:
+        pickle.dump(y, pickle_out)
+
+# Build the model
+def create_model():
+    model = Sequential([
+        Conv2D(64, (3, 3), input_shape=(IMG_SIZE, IMG_SIZE, 1)),
+        Activation("relu"),
+        MaxPooling2D(pool_size=(2, 2)),
+
+        Conv2D(64, (3, 3)),
+        Activation("relu"),
+        MaxPooling2D(pool_size=(2, 2)),
+
+        Flatten(),
+        Dense(64),
+        Activation("relu"),
+
+        Dense(1),
+        Activation('sigmoid')
+    ])
+
+    model.compile(loss="binary_crossentropy",
+                  optimizer="adam",
+                  metrics=['accuracy'])
+    return model
+
+# Load or train the model
+if os.path.exists(MODEL_PATH):
+    model = tf.keras.models.load_model(MODEL_PATH)
+else:
+    model = create_model()
+
+    # Split the data into training and validation sets
+    from sklearn.model_selection import train_test_split
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2)
+
+    # Train the model
+    model.fit(X_train, y_train, batch_size=32, epochs=10, validation_data=(X_val, y_val))
+
+    # Save the trained model
+    model.save(MODEL_PATH)
+
+# Test with a new image
+def prepare(filepath):
+    img_array = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    new_array = cv2.resize(img_array, (IMG_SIZE, IMG_SIZE))
+    return new_array.reshape(-1, IMG_SIZE, IMG_SIZE, 1) / 255.0
+
+img_path = '/kaggle/input/microsoft-catsvsdogs-dataset/PetImages/Dog/1000.jpg'
+img = prepare(img_path)
+
+prediction = model.predict(img)
+print("Dog" if prediction[0][0] < 0.5 else "Cat")
