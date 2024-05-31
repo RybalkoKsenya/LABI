@@ -1,0 +1,50 @@
+import pandas as pd
+
+from matplotlib import pyplot as plt
+import seaborn as sns
+
+PATH_TO_TRAIN = '/kaggle/input/titanic/train.csv'
+PATH_TO_TEST = '/kaggle/input/titanic/test.csv'
+
+train = pd.read_csv(PATH_TO_TRAIN, index_col = 'PassengerId')
+test = pd.read_csv(PATH_TO_TEST, index_col = 'PassengerId')
+
+useless_colums = ['Name', 'Ticket', 'Cabin']
+
+train_clean = train.drop(columns=useless_colums)
+test_clean = test.drop(columns=useless_colums)
+
+
+def impute_data(df):
+    df_copy = df.copy()
+    
+    categorial_vars = list(df_copy.select_dtypes(include=['object']).columns.values)
+    for col in categorial_vars:
+        if (df_copy[col].isnull().values.any()):
+            df_copy[col].fillna(df_copy[col].mode()[0], inplace=True)
+            
+    numerical_vars = list(df_copy.select_dtypes(include=['int64', 'float64']).columns.values)
+    for col in numerical_vars:
+        if (df_copy[col].isnull().values.any()):
+            df_copy[col].fillna(df_copy[col].median(), inplace=True)
+            
+    return df_copy
+
+train_full = impute_data(train_clean)
+test_full = impute_data(test_clean)
+
+train_full['Family_size'] = train_full['Parch'] + train_full['SibSp']
+test_full['Family_size'] = test_full['Parch'] + test_full['SibSp']
+
+train_full.to_csv('train_imputed.csv')
+test_full.to_csv('test_imputed.csv')
+
+(test_full['Sex'] == 'male')
+(test_full['Sex'] == 'male') & (test_full['Pclass'] == 3)
+simple_pred = (~((test_full['Sex'] == 'male') & (test_full['Pclass'] == 3))).astype(int).values
+
+def make_prediction_file(prediction, test_data, name):
+    result = pd.DataFrame({'PassengerId': test_data.reset_index()['PassengerId'], "Survived": prediction})
+    result.to_csv(name, index=False)
+    
+make_prediction_file(simple_pred, test, 'titanic_simple_baseline.csv')
